@@ -55,4 +55,6 @@ This library handles different libraries for gui widgets that may be used for GU
 
 `Author`: Jose Rico-Jimenez
 
+**This project is licensed for personal, instructional, and internal use only. See [LICENSE](./LICENSE) for details.**
+
 ---

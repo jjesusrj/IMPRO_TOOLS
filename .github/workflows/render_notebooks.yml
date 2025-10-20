@@ -6,6 +6,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write # ✅ This gives the GitHub Actions bot permission to push
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,8 +28,6 @@ jobs:
 
       - name: Install a dark theme
         run: |
-          # The custom dark CSS will need to be downloaded or created once
-          # A simple CSS file can work, or a more complex one
           mkdir -p ./.github/styles/
           echo '
           body {
@@ -50,7 +51,7 @@ jobs:
           mkdir -p rendered_notebooks
           for notebook in *.ipynb; do
             if [ -f "$notebook" ]; then
-              nbconvert "$notebook" --to html --template basic --CSSFile=./.github/styles/dark.css --output-dir="rendered_notebooks/"
+              jupyter nbconvert "$notebook" --to html --template basic --CSSFile=./.github/styles/dark.css --output-dir="rendered_notebooks/"
             fi
           done
 
@@ -66,4 +67,3 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./rendered_notebooks
-          destination_dir: ./
