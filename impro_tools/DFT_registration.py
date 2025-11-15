@@ -15,7 +15,7 @@
 #               Create an instance of the DFT registration class with the size of the image, the upsampling factor (usfac):
 #               1) Define the DFT registrator:
 #                   Numpy version:
-#                       dft_reg = Numoy_DFT_Registrator(fixed_img.shape, usfac=20)
+#                       dft_reg = Numpy_DFT_Registrator(fixed_img.shape, usfac=20)
 #                   PyTorch version:
 #                       dft_reg = Torch_DFT_Registrator(fixed_img.shape, usfac=20, device="cuda:0")
 #
@@ -46,7 +46,7 @@ import torch
 
 
 # Numpy-based DFT-based subpixel image registration class
-class Numoy_DFT_Registrator():
+class Numpy_DFT_Registrator():
     '''
     DFT-based subpixel shift estimation and Image registration.\n
     '''
