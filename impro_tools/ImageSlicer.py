@@ -13,7 +13,6 @@ class ImageSlicer:
 
     def slice_along_line(self, image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int], thickness: int) -> typing.Optional[np.ndarray]:
         """
-        [Original Function, Renamed for Clarity]
         Extracts a rectangular slice defined by a centerline (p1 to p2) and a thickness,
         and straightens it using a perspective transform. This is useful for extracting
         rotated or angled regions.
@@ -28,12 +27,13 @@ class ImageSlicer:
             np.ndarray: A new image containing the straightened slice, or None if points are identical.
         """
         p1_arr, p2_arr = np.array(p1, dtype=np.float32), np.array(p2, dtype=np.float32)
+         # Calculate the line length
         line_vec = p2_arr - p1_arr
         line_length = np.linalg.norm(line_vec)
 
         if line_length == 0:
             print("Warning: Points are identical. Returning None.")
-            return None
+            return None, None
 
         # Normalize the direction vector
         direction = line_vec / line_length
@@ -63,60 +63,77 @@ class ImageSlicer:
 
         return result, src_pts
 
-    def slice_by_corners(self, image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int]) -> typing.Optional[np.ndarray]:
+
+
+
+
+
+
+    def slice_by_corners(self, image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int], height: float) -> typing.Optional[np.ndarray]:
         """
-        [New Function]
-        Extracts an axis-aligned rectangular slice defined by two opposite corners (p1 and p2).
-        It is robust to the order of p1 and p2 (i.e., it doesn't matter if p1 is top-left or bottom-right).
+        Extracts a rectangle from two opposite corners (p1, p2) with a given height perpendicular
+        to the diagonal, assuming the rectangle may be rotated.
 
         Args:
-            image (np.ndarray): The source image.
-            p1 (tuple): (x, y) coordinate of the first corner.
-            p2 (tuple): (x, y) coordinate of the second, opposite corner.
+            image (np.ndarray): Source image
+            p1 (tuple): Top-left corner
+            p2 (tuple): Bottom-right corner
+            height (float): Height perpendicular to the diagonal (p1->p2)
 
         Returns:
-            np.ndarray: A new image containing the sliced rectangle, or None if the area is zero.
+            np.ndarray: Straightened rectangle slice
         """
-        x1, y1 = p1
-        x2, y2 = p2
+        p1_arr = np.array(p1, dtype=np.float32)
+        p2_arr = np.array(p2, dtype=np.float32)
 
-        # 1. Determine True Bounds (Min/Max X and Y)
-        # This is the key step to making the order of p1 and p2 irrelevant.
-        min_x = int(min(x1, x2))
-        max_x = int(max(x1, x2))
-        min_y = int(min(y1, y2))
-        max_y = int(max(y1, y2))
-
-        # Calculate final width and height
-        width = max_x - min_x
-        height = max_y - min_y
-
-        # Check for valid area
-        if width <= 0 or height <= 0:
-            print("Warning: Area is zero or negative. Returning None.")
+        # Vector along the diagonal
+        diag_vec = p2_arr - p1_arr
+        diag_length = np.linalg.norm(diag_vec)
+        if diag_length == 0:
+            print("Warning: p1 and p2 are identical")
             return None
 
-        # 2. Define Source Points (The four corners of the extracted box)
-        # We define them in a consistent order: Top-Left, Top-Right, Bottom-Right, Bottom-Left.
+        # Unit vector along the diagonal
+        diag_dir = diag_vec / diag_length
+
+        # Perpendicular vector
+        perp_dir = np.array([-diag_dir[1], diag_dir[0]])
+
+        # To form the right triangles, scale the perpendicular vector
+        # The perpendicular sides have length such that the rectangle height = given height
+        # Offset formula derived from right triangle: the perpendicular side length along perp_dir
+        half_height = height / 2.0
+
+        # Compute the other two corners
+        top_right = p1_arr + perp_dir * half_height * 2  # shifted from p1 along perpendicular
+        bottom_left = p2_arr - perp_dir * half_height * 2  # shifted from p2 along negative perpendicular
+
+        # Now we have all four corners in order: TL, TR, BR, BL
         src_pts = np.array([
-            [min_x, min_y],  # Top-Left (TL)
-            [max_x, min_y],  # Top-Right (TR)
-            [max_x, max_y],  # Bottom-Right (BR)
-            [min_x, max_y]   # Bottom-Left (BL)
+            p1_arr,       # top-left
+            top_right,    # top-right
+            p2_arr,       # bottom-right
+            bottom_left   # bottom-left
         ], dtype=np.float32)
 
-        # 3. Define Destination Points (The unrotated output image)
+        # Width is distance between top-left and top-right
+        width = np.linalg.norm(top_right - p1_arr)
+
+        # Height is distance between top-left and bottom-left
+        height = np.linalg.norm(bottom_left - p1_arr)
+
+        # Destination rectangle (straightened)
         dst_pts = np.array([
-            [0, 0],          # TL maps to (0, 0)
-            [width, 0],      # TR maps to (width, 0)
-            [width, height], # BR maps to (width, height)
-            [0, height]      # BL maps to (0, height)
+            [0, 0],
+            [0, width],
+            [height, width],
+            [height, 0]
         ], dtype=np.float32)
 
-        # 4. Apply Transform
-        # A simple crop (slicing) would also work here, but using the perspective
-        # transform method keeps the approach consistent with the 'slice_along_line' method.
+        # Perspective transform
         M = cv2.getPerspectiveTransform(src_pts, dst_pts)
-        result = cv2.warpPerspective(image, M, (width, height))
+        result = cv2.warpPerspective(image, M, (int(height), int(width)))
 
-        return result
+        return result, src_pts
+
+
