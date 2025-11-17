@@ -11,7 +11,8 @@ class ImageSlicer:
     def __init__(self):
         pass
 
-    def slice_along_line(self, image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int], thickness: int) -> typing.Optional[np.ndarray]:
+    @staticmethod
+    def slice_along_line(image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int], thickness: int) -> typing.Optional[typing.Tuple[np.ndarray, np.ndarray]]:
         """
         Extracts a rectangular slice defined by a centerline (p1 to p2) and a thickness,
         and straightens it using a perspective transform. This is useful for extracting
@@ -64,12 +65,8 @@ class ImageSlicer:
         return result, src_pts
 
 
-
-
-
-
-
-    def slice_by_corners(self, image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int], height: float) -> typing.Optional[np.ndarray]:
+    @staticmethod
+    def slice_by_corners(image: np.ndarray, p1: typing.Tuple[int, int], p2: typing.Tuple[int, int], height: float) -> typing.Optional[typing.Tuple[np.ndarray, np.ndarray]]:
         """
         Extracts a rectangle from two opposite corners (p1, p2) with a given height perpendicular
         to the diagonal, assuming the rectangle may be rotated.

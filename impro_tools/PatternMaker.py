@@ -3,12 +3,21 @@ from turtle import width
 import numpy as np
 import cv2
 from PIL import Image, ImageFilter, ImageDraw
+import cv2
+from typing import Union, Tuple
+
 
 class PatternMaker:
+    sharp_kernel = np.array([[0, -1, 0],
+                   [-1, 5, -1],
+                   [0, -1, 0]])
+    
     def __init__(self):
         pass  # No initialization needed for now
 
-    def create_checkerboard(self, size=(800, 800), block_size=50):
+
+    @staticmethod
+    def create_checkerboard(size:tuple=(800, 800), block_size:int=50) -> np.ndarray:
         """
         Creates a black and white checkerboard image.
 
@@ -29,7 +38,11 @@ class PatternMaker:
         return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     
 
-    def MakeTuring(self, image:Image.Image, rep=20, radius=5, sharpen_percent=300):
+
+    @staticmethod
+    def make_turing(image: Image.Image, rep: int = 20, radius: int = 5, 
+                    sharpen_percent: int = 300, as_rgb: bool = False
+                    ) -> Union[Image.Image, np.ndarray]:
         """
         Applies Turing pattern effect to an existing image.
         Args:
@@ -37,13 +50,77 @@ class PatternMaker:
             rep (int): Number of times to apply the blur and sharpen filters.
             radius (int): Radius for the blur and sharpen filters.
             sharpen_percent (int): Percent for the sharpen filter. """
-        img = image
+        if isinstance(image, np.ndarray):
+            img = Image.fromarray(image)
         for _ in range(rep):
             img = img.filter(ImageFilter.BoxBlur(radius=radius))
             img = img.filter(ImageFilter.UnsharpMask(radius=radius, percent=sharpen_percent, threshold=0))
+        if as_rgb:
+            img = cv2.cvtColor(np.array(img).astype(np.uint8), cv2.COLOR_GRAY2RGB)
         return img
+    
 
-    def CreateTuringPattern(self,size, rep=20, radius=5, sharpen_percent=300):
+
+    @classmethod
+    def make_turing_cv2(cls, image: Union[Image.Image, np.ndarray], rep: int = 20, radius: int = 5, 
+                        sharpen_percent: int = 300, as_rgb: bool = False, as_PIL: bool = True
+                        ) -> Union[Image.Image, np.ndarray]:
+        """
+        Implementation using OpenCV that is almost equivalent to the original Pillow code.
+        """
+        
+        # Setup and Type Conversion
+        if isinstance(image, Image.Image):
+            # Convert to grayscale float32
+            img_np = np.array(image.convert('L'), dtype=np.float32)
+        elif isinstance(image, np.ndarray):
+            img_np = image 
+            if img_np.ndim == 3:
+                img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
+            img_np = img_np.astype(np.float32) 
+        else:
+            raise TypeError("Input 'image' must be a PIL.Image or a numpy.ndarray.")
+
+        # Kernel and Sigma Calculation
+        # Box Blur Kernel Size (Using INT(radius) for sharpness)
+        r_int = max(1, int(radius)) 
+        box_ksize_int = 2 * r_int + 1
+        
+        # Gaussian Sigma Calculation (Matches Pillow's UnsharpMask internal sigma)
+        gaussian_sigma = 0.4 * float(radius) + 0.6
+        
+        # Sharpening strength (alpha = percent / 100)
+        alpha = sharpen_percent / 100.0
+
+        ## Blur and Sharpen
+        for _ in range(rep):
+            # Box Blur 
+            blurred_base = cv2.boxFilter(
+                img_np, 
+                ddepth=-1, 
+                ksize=(box_ksize_int, box_ksize_int), 
+                normalize=True
+            )
+            # Create the mask (The Gaussian blur of the blurred image)
+            gaussian_blurred = cv2.GaussianBlur(blurred_base, ksize=(0, 0), sigmaX=gaussian_sigma)
+            # Calculate the Mask (Detail = Base - Gaussian Blurred)
+            mask = blurred_base - gaussian_blurred
+            # Apply Sharpening: Base + alpha * Mask
+            img_np = np.clip(blurred_base + alpha * mask, 0, 255)
+
+        output_array = img_np.astype(np.uint8)
+        if as_rgb:
+            output_array = cv2.cvtColor(output_array, cv2.COLOR_GRAY2RGB)
+        if as_PIL:
+            return Image.fromarray(output_array)
+        else:
+            return output_array
+
+
+
+    @classmethod
+    def create_turing_pattern(cls, size: Tuple[int, int], rep: int = 20, 
+                              radius: int = 5, sharpen_percent: int = 300) -> Union[Image.Image, np.ndarray]:
         """
         Creates a random Turing pattern image.
         Args:
@@ -51,26 +128,54 @@ class PatternMaker:
             rep (int): Number of times to apply the blur and sharpen filters.
             radius (int): Radius for the blur and sharpen filters.
             sharpen_percent (int): Percent for the sharpen filter. """
-        img = Image.fromarray((np.random.random(size)*255).astype(np.uint8))
-        return self.MakeTuring(img, rep, radius, sharpen_percent)
-
-    def CreateTuringImage(self, imaage:np.ndarray, rep=20, radius=5, sharpen_percent=300):
-        if len(imaage.shape)==3:
-            gray = cv2.cvtColor(imaage, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = imaage
-        # Apply Canny edge detection
-        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-        edges = 255 - cv2.Canny(blurred, 100, 200)
-        img = Image.fromarray(edges)
-        return self.MakeTuring(img, rep, radius, sharpen_percent)
+        img = (np.random.random(size)*255).astype(np.uint8)
+        return cls.make_turing(img, rep, radius, sharpen_percent)
     
 
-    def DrawCircle(self, image, x_coord, y_coord, fill='Black', outline='white', circle_diameter=10, line_width=1):
+
+    @classmethod
+    def create_turing_image(cls,image: np.ndarray, rep: int = 20, radius: int = 1, sharpen_percent: int = 200,
+                            canny_th: Tuple[int, int] = (100, 200), as_rgb: bool = False, use_cv2: bool = False,
+                             as_PIL: bool = False) -> Union[Image.Image, np.ndarray]:
+        """
+        Creates a Turing pattern image from the edges of an input image.
+
+        Args:
+            image (np.ndarray): Input image (grayscale or BGR color).
+            rep (int): Number of times to apply blur and sharpen filters.
+            radius (int): Radius for blur and sharpen filters.
+            sharpen_percent (int): Percent for the sharpen filter.
+            canny_th (tuple[int, int]): Thresholds for Canny edge detection.
+            as_rgb (bool): Convert output to RGB if True.
+            use_cv2 (bool): Use OpenCV implementation of Turing effect if True.
+            as_PIL (bool): If True and use_cv2=True, return a PIL.Image; otherwise, return np.ndarray.
+
+        Returns:
+            PIL.Image.Image or np.ndarray: Turing pattern image.
+        """
+        if len(image.shape)==3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image
+        # Apply Canny edge detection
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        blurred = gray
+        edges = 255 - cv2.Canny(blurred, canny_th[0], canny_th[1])
+        if use_cv2:
+            return cls.make_turing_cv2(edges, rep, radius, sharpen_percent, as_rgb, as_PIL)
+        else:
+            return cls.make_turing(edges, rep, radius, sharpen_percent, as_rgb)
+    
+
+
+    @staticmethod
+    def draw_circle(image: Image.Image, x_coord: int, y_coord: int, fill: str = 'black',
+                    outline: str = 'white',circle_diameter: int = 10,line_width: int = 1) -> None:
         """
         Draws a circle on the given image.
+
         Args:
-            image (PIL.Image): The image to draw on.
+            image (PIL.Image.Image): The image to draw on.
             x_coord (int): The x-coordinate of the circle's center.
             y_coord (int): The y-coordinate of the circle's center.
             fill (str): The fill color of the circle.
@@ -86,12 +191,16 @@ class PatternMaker:
         draw.ellipse((x1, y1, x2, y2), fill=fill)
 
 
-    def DrawRect(self, image, rect, fill='Black', outline='white', line_width=1):
+
+    @staticmethod
+    def draw_rect(image: Image.Image, rect: Tuple[int, int, int, int],fill: str = 'black',
+                  outline: str = 'white',line_width: int = 1) -> None:
         """
         Draws a rectangle on the given image.
+
         Args:
-            image (PIL.Image): The image to draw on.
-            rect (tuple): The rectangle defined as (left, top, right, bottom).
+            image (PIL.Image.Image): The image to draw on.
+            rect (tuple[int, int, int, int]): The rectangle defined as (left, top, right, bottom).
             fill (str): The fill color of the rectangle.
             outline (str): The outline color of the rectangle.
             line_width (int): The width of the outline.
@@ -100,15 +209,22 @@ class PatternMaker:
         draw.rectangle(rect, fill=fill, outline=outline, width=line_width)
 
 
-    def DrawTriangle(self, image, rect, fill='Black', outline='white', line_width=1):
+
+    @staticmethod
+    def draw_triangle(image: Image.Image,rect: Tuple[int, int, int, int], fill: str = 'black',
+                      outline: str = 'white',line_width: int = 1) -> None:
         """
-        Draws a triangle on the given image.
+        Draws a triangle inside the given bounding rectangle on the image.
+
         Args:
-            image (PIL.Image): The image to draw on.
-            rect (tuple): The bounding rectangle defined as (left, top, right, bottom).
+            image (PIL.Image.Image): The image to draw on.
+            rect (tuple[int, int, int, int]): The bounding rectangle defined as (left, top, right, bottom).
             fill (str): The fill color of the triangle.
             outline (str): The outline color of the triangle.
             line_width (int): The width of the outline.
+
+        Returns:
+            None
         """
         draw = ImageDraw.Draw(image)
         points = [  (rect[0],rect[3]),
